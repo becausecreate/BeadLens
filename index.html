@@ -783,21 +783,19 @@ async function analyzeImage() {
   document.getElementById('analyzingState').style.display = 'block';
   document.getElementById('analyzeBtn').disabled = true;
 
-  const prompt = `You are an expert gemologist and bead specialist. Analyse this image carefully.
+  const prompt = `You are an expert gemologist. Analyse this bead image.
 
-1. COUNT the total number of individual beads visible (even partially). Be thorough.
-2. IDENTIFY the most likely bead material/gemstone type based on colour, translucency, lustre, shape, and surface texture. Provide 3-5 ranked candidates.
-3. Write a brief one-sentence visual description of the beads.
+Return ONLY a raw JSON object - no markdown, no code fences, no extra text before or after.
+All string values must use only simple ASCII characters, no special quotes or symbols.
+Use this exact structure:
+{"count":0,"description":"plain text description here","identifications":[{"name":"Material Name","confidence":"High","reasoning":"brief reason"},{"name":"Material Name 2","confidence":"Medium","reasoning":"brief reason"}]}
 
-Respond ONLY with valid JSON, no markdown, no explanation:
-{
-  "count": <integer>,
-  "description": "<one sentence visual description>",
-  "identifications": [
-    {"name": "<material name>", "confidence": "<High|Medium|Low>", "reasoning": "<brief reason>"},
-    ...
-  ]
-}`;
+Rules:
+- count: integer, total beads visible
+- description: short plain sentence, no quotes or apostrophes inside the value
+- identifications: 3 to 5 items ranked by likelihood
+- confidence: exactly one of High, Medium, Low
+- Output ONLY the JSON, nothing else`;
 
   try {
     const res = await fetch(
@@ -828,16 +826,36 @@ Respond ONLY with valid JSON, no markdown, no explanation:
 
     const data = await res.json();
     const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-    if (!rawText) throw new Error('Empty response from Gemini. Please try again.');
+    if (!rawText) {
+      const reason = data.candidates?.[0]?.finishReason || 'unknown';
+      throw new Error(`Empty response from Gemini (finishReason: ${reason}). Try again.`);
+    }
 
-    // Robustly extract JSON - strip markdown fences, find outermost { } block
-    let jsonStr = rawText.replace(/```json\s*|```\s*/g, '').trim();
+    // Log raw response to console for debugging
+    console.log('Gemini raw response:', rawText);
+
+    // Extract outermost { } block, stripping any markdown fences
+    let jsonStr = rawText.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
     const firstBrace = jsonStr.indexOf('{');
     const lastBrace = jsonStr.lastIndexOf('}');
-    if (firstBrace !== -1 && lastBrace !== -1) {
-      jsonStr = jsonStr.slice(firstBrace, lastBrace + 1);
+    if (firstBrace === -1 || lastBrace === -1) {
+      throw new Error('Gemini did not return a JSON object. Raw: ' + jsonStr.slice(0, 200));
     }
-    analysisResult = JSON.parse(jsonStr);
+    jsonStr = jsonStr.slice(firstBrace, lastBrace + 1);
+
+    // Sanitise common issues: unescaped newlines/tabs inside string values
+    // Replace literal newlines/tabs inside JSON strings with escaped versions
+    jsonStr = jsonStr.replace(/("(?:[^"\\]|\\.)*")|([\n\r\t])/g, (match, str, ws) => {
+      if (str) return str; // inside a quoted string, keep as-is (already escaped by JSON)
+      return ' '; // outside strings, collapse whitespace
+    });
+
+    try {
+      analysisResult = JSON.parse(jsonStr);
+    } catch (parseErr) {
+      // Last resort: ask Gemini to return only the 3 key fields with a simpler prompt
+      throw new Error('JSON parse error: ' + parseErr.message + ' — Please try again with a clearer photo.');
+    }
 
     document.getElementById('analyzingState').style.display = 'none';
     renderResult(analysisResult);
