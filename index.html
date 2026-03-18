@@ -310,6 +310,20 @@
   }
   .count-step-btn:hover { background: rgba(192,132,252,0.15); border-color: var(--accent); }
   .count-step-btn:active { transform: scale(0.92); }
+  .photo-tips {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    background: rgba(251,191,36,0.06);
+    border: 1px solid rgba(251,191,36,0.2);
+    border-radius: var(--radius-sm);
+    padding: 10px 12px;
+    font-size: 11px;
+    color: rgba(251,191,36,0.8);
+    line-height: 1.5;
+    margin-bottom: 12px;
+  }
+  .tips-icon { flex-shrink: 0; font-size: 13px; }
   .edit-hint { font-size: 10px; color: var(--text-muted); letter-spacing: 0.1em; }
 
   .id-section-title {
@@ -667,6 +681,10 @@
       </button>
     </div>
 
+    <div class="photo-tips">
+      <span class="tips-icon">💡</span>
+      <span>For best counts: shoot overhead, spread beads out, use even lighting, avoid shadows</span>
+    </div>
     <div id="errorMsg" class="error-msg" style="display:none"></div>
     <div id="analyzingState" class="analyzing-overlay" style="display:none">
       <div class="gem-spinner"></div>
@@ -799,29 +817,35 @@ async function analyzeImage() {
   document.getElementById('analyzingState').style.display = 'block';
   document.getElementById('analyzeBtn').disabled = true;
 
-  const prompt = `You are an expert bead counter. Your most important task is to count beads ACCURATELY.
+  const prompt = `You are an expert bead counter. Count the beads in this image as accurately as possible.
 
-COUNTING INSTRUCTIONS - follow these steps mentally before answering:
-1. Divide the image into a grid of sections (e.g. top-left, top-right, bottom-left, bottom-right).
-2. Count the beads in each section separately.
-3. Add the section counts together for the total.
-4. Do NOT count the same bead twice if it sits on a grid boundary.
-5. Do NOT count shadows, reflections, or blurred partial beads at the very edge of the image.
-6. If beads are on a string, count along the string rather than estimating.
-7. Be conservative - when unsure whether something is a bead, do NOT count it.
+COUNTING METHOD - follow every step:
+1. Divide the image into a grid: top-left, top-right, bottom-left, bottom-right quadrants.
+2. Count each quadrant separately. Write the sub-totals mentally.
+3. Sum the quadrants for a total.
+4. Now critically review your total. AI models consistently OVERCOUNT. Ask yourself:
+   - Did I count any shadows or reflections as beads?
+   - Did I count blurry or partial beads at the image edge?
+   - Did I accidentally count any bead twice near a quadrant boundary?
+   - Am I certain each item I counted is definitely a bead?
+5. For every item you are not 100% certain is a real bead, do NOT count it.
+6. If beads are on a string or wire, count along the strand one by one.
+7. Produce a CONSERVATIVE estimate (countLow) and a LIBERAL estimate (countHigh).
+   The true count is almost always closer to countLow.
 
-Then identify the bead material based on colour, translucency, and surface texture.
+Then identify the bead material from colour, translucency, lustre, and texture.
 
-Return ONLY a raw JSON object. No markdown, no code fences, no explanation, no text outside the JSON.
-Use exactly this structure with no extra fields:
-{"count":12,"identifications":[{"name":"Carnelian","confidence":"High"},{"name":"Garnet","confidence":"Medium"},{"name":"Ruby","confidence":"Low"}]}
+Return ONLY a raw JSON object. No markdown, no code fences, no extra text.
+Exact structure:
+{"countLow":10,"countHigh":14,"identifications":[{"name":"Carnelian","confidence":"High"},{"name":"Garnet","confidence":"Medium"},{"name":"Ruby","confidence":"Low"}]}
 
 Rules:
-- count: integer, your careful section-by-section total
-- identifications: 3 to 5 items, ranked most likely first
-- name: bead material or gemstone type, plain ASCII only, no apostrophes
-- confidence: exactly the word High, Medium, or Low
-- Output ONLY the JSON object, nothing else, no extra characters`;
+- countLow: your conservative undercount estimate
+- countHigh: your liberal overcount estimate
+- identifications: 3 to 5 items, most likely first
+- name: plain ASCII, no apostrophes
+- confidence: exactly High, Medium, or Low
+- Output ONLY the JSON, nothing else`;
 
   try {
     const res = await fetch(
@@ -920,11 +944,13 @@ function renderResult(data) {
   section.innerHTML = `
     <div class="result-card">
       <div class="count-display">
-        <div class="count-number" id="countDisplay">${data.count}</div>
-        <div class="count-label">Beads detected</div>
+        <div class="count-number" id="countDisplay">${data.countLow ?? data.count ?? 0}</div>
+        <div class="count-label">Conservative count
+          ${data.countHigh ? `<span style="color:var(--text-muted);margin-left:6px">(up to ${data.countHigh})</span>` : ''}
+        </div>
         <div class="count-edit-row">
           <button class="count-step-btn" onclick="stepCount(-1)">−</button>
-          <input type="number" id="countOverride" value="${data.count}" min="0" max="9999"
+          <input type="number" id="countOverride" value="${data.countLow ?? data.count ?? 0}" min="0" max="9999"
             oninput="document.getElementById('countDisplay').textContent=this.value"/>
           <button class="count-step-btn" onclick="stepCount(1)">+</button>
         </div>
@@ -963,7 +989,7 @@ function clearIdSelection() {
 // ─── CONFIRM ─────────────────────────────────────────────────────────────────
 function confirmEntry() {
   const countInput = document.getElementById('countOverride');
-  const count = parseInt(countInput?.value || analysisResult?.count || 0);
+  const count = parseInt(countInput?.value || analysisResult?.countLow || analysisResult?.count || 0);
   const customId = document.getElementById('customId').value.trim();
   const selected = document.querySelector('.id-option.selected');
   const beadType = customId || selected?.dataset.name || 'Unknown';
