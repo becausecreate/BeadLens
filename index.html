@@ -785,17 +785,16 @@ async function analyzeImage() {
 
   const prompt = `You are an expert gemologist. Analyse this bead image.
 
-Return ONLY a raw JSON object - no markdown, no code fences, no extra text before or after.
-All string values must use only simple ASCII characters, no special quotes or symbols.
-Use this exact structure:
-{"count":0,"description":"plain text description here","identifications":[{"name":"Material Name","confidence":"High","reasoning":"brief reason"},{"name":"Material Name 2","confidence":"Medium","reasoning":"brief reason"}]}
+Return ONLY a raw JSON object. No markdown, no code fences, no explanation, no text outside the JSON.
+Use exactly this structure with no extra fields:
+{"count":12,"identifications":[{"name":"Carnelian","confidence":"High"},{"name":"Garnet","confidence":"Medium"},{"name":"Ruby","confidence":"Low"}]}
 
 Rules:
-- count: integer, total beads visible
-- description: short plain sentence, no quotes or apostrophes inside the value
-- identifications: 3 to 5 items ranked by likelihood
-- confidence: exactly one of High, Medium, Low
-- Output ONLY the JSON, nothing else`;
+- count: integer, number of beads visible in the image
+- identifications: 3 to 5 items, ranked most likely first
+- name: bead material or gemstone type, plain ASCII only, no apostrophes
+- confidence: exactly the word High, Medium, or Low
+- Output ONLY the JSON object, nothing else, no extra characters`;
 
   try {
     const res = await fetch(
@@ -834,27 +833,26 @@ Rules:
     // Log raw response to console for debugging
     console.log('Gemini raw response:', rawText);
 
-    // Extract outermost { } block, stripping any markdown fences
+    // Strip markdown fences and grab outermost { } block
     let jsonStr = rawText.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
     const firstBrace = jsonStr.indexOf('{');
     const lastBrace = jsonStr.lastIndexOf('}');
     if (firstBrace === -1 || lastBrace === -1) {
-      throw new Error('Gemini did not return a JSON object. Raw: ' + jsonStr.slice(0, 200));
+      throw new Error('No JSON found in response: ' + jsonStr.slice(0, 200));
     }
     jsonStr = jsonStr.slice(firstBrace, lastBrace + 1);
 
-    // Sanitise common issues: unescaped newlines/tabs inside string values
-    // Replace literal newlines/tabs inside JSON strings with escaped versions
-    jsonStr = jsonStr.replace(/("(?:[^"\\]|\\.)*")|([\n\r\t])/g, (match, str, ws) => {
-      if (str) return str; // inside a quoted string, keep as-is (already escaped by JSON)
-      return ' '; // outside strings, collapse whitespace
-    });
+    // Remove all literal whitespace characters (newlines, tabs, carriage returns)
+    // that may appear unescaped inside string values
+    jsonStr = jsonStr.replace(/[\r\n\t]/g, ' ');
+
+    // Remove any non-ASCII characters that could break parsing
+    jsonStr = jsonStr.replace(/[^\x00-\x7F]/g, '');
 
     try {
       analysisResult = JSON.parse(jsonStr);
     } catch (parseErr) {
-      // Last resort: ask Gemini to return only the 3 key fields with a simpler prompt
-      throw new Error('JSON parse error: ' + parseErr.message + ' — Please try again with a clearer photo.');
+      throw new Error('Could not parse response (' + parseErr.message + '). Raw: ' + jsonStr.slice(0, 300));
     }
 
     document.getElementById('analyzingState').style.display = 'none';
@@ -898,7 +896,6 @@ function renderResult(data) {
         <input type="text" id="customId" placeholder="Or type a correction…" oninput="clearIdSelection()"/>
       </div>
 
-      ${data.description ? `<div class="description-section">"${data.description}"</div>` : ''}
 
       <button class="btn-confirm" onclick="confirmEntry()">
         ✦ Save to Inventory
