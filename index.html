@@ -944,17 +944,17 @@ function renderResult(data) {
   section.innerHTML = `
     <div class="result-card">
       <div class="count-display">
-        <div class="count-number" id="countDisplay">${data.countLow ?? data.count ?? 0}</div>
-        <div class="count-label">Conservative count
-          ${data.countHigh ? `<span style="color:var(--text-muted);margin-left:6px">(up to ${data.countHigh})</span>` : ''}
+        <div class="count-number" id="countDisplay">${Math.floor(((data.countLow ?? data.count ?? 0) + (data.countHigh ?? data.countLow ?? data.count ?? 0)) / 2)}</div>
+        <div class="count-label">Estimated count
+          ${(data.countLow && data.countHigh) ? `<span style="color:var(--text-muted);margin-left:6px">(range ${data.countLow}–${data.countHigh})</span>` : ''}
         </div>
         <div class="count-edit-row">
           <button class="count-step-btn" onclick="stepCount(-1)">−</button>
-          <input type="number" id="countOverride" value="${data.countLow ?? data.count ?? 0}" min="0" max="9999"
+          <input type="number" id="countOverride" value="${Math.floor(((data.countLow ?? data.count ?? 0) + (data.countHigh ?? data.countLow ?? data.count ?? 0)) / 2)}" min="0" max="9999"
             oninput="document.getElementById('countDisplay').textContent=this.value"/>
           <button class="count-step-btn" onclick="stepCount(1)">+</button>
         </div>
-        <div class="edit-hint">Tap − / + to correct the count</div>
+        <div class="edit-hint">Tap − / + to correct · range: ${data.countLow ?? '?'}–${data.countHigh ?? '?'}</div>
       </div>
 
       <div class="id-section-title">Possible Identifications</div>
@@ -989,7 +989,10 @@ function clearIdSelection() {
 // ─── CONFIRM ─────────────────────────────────────────────────────────────────
 function confirmEntry() {
   const countInput = document.getElementById('countOverride');
-  const count = parseInt(countInput?.value || analysisResult?.countLow || analysisResult?.count || 0);
+  const low = analysisResult?.countLow ?? analysisResult?.count ?? 0;
+  const high = analysisResult?.countHigh ?? low;
+  const midpoint = Math.floor((low + high) / 2);
+  const count = parseInt(countInput?.value || midpoint || 0);
   const customId = document.getElementById('customId').value.trim();
   const selected = document.querySelector('.id-option.selected');
   const beadType = customId || selected?.dataset.name || 'Unknown';
