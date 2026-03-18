@@ -811,7 +811,7 @@ Rules:
           }],
           generationConfig: {
             temperature: 0.2,
-            maxOutputTokens: 2048,
+            maxOutputTokens: 8192,
             responseMimeType: 'application/json'
           }
         })
@@ -837,8 +837,11 @@ Rules:
     let jsonStr = rawText.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
     const firstBrace = jsonStr.indexOf('{');
     const lastBrace = jsonStr.lastIndexOf('}');
-    if (firstBrace === -1 || lastBrace === -1) {
+    if (firstBrace === -1) {
       throw new Error('No JSON found in response: ' + jsonStr.slice(0, 200));
+    }
+    if (lastBrace === -1 || lastBrace < firstBrace) {
+      throw new Error('Response was cut off before completion — please try again.');
     }
     jsonStr = jsonStr.slice(firstBrace, lastBrace + 1);
 
