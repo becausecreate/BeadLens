@@ -294,6 +294,22 @@
     outline: none;
   }
   .count-edit-row input:focus { border-color: var(--accent); }
+  .count-step-btn {
+    width: 38px; height: 38px;
+    border-radius: 50%;
+    border: 1px solid var(--border);
+    background: var(--surface2);
+    color: var(--accent);
+    font-size: 22px;
+    line-height: 1;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: background 0.15s, border-color 0.15s;
+    flex-shrink: 0;
+    font-family: monospace;
+  }
+  .count-step-btn:hover { background: rgba(192,132,252,0.15); border-color: var(--accent); }
+  .count-step-btn:active { transform: scale(0.92); }
   .edit-hint { font-size: 10px; color: var(--text-muted); letter-spacing: 0.1em; }
 
   .id-section-title {
@@ -783,14 +799,25 @@ async function analyzeImage() {
   document.getElementById('analyzingState').style.display = 'block';
   document.getElementById('analyzeBtn').disabled = true;
 
-  const prompt = `You are an expert gemologist. Analyse this bead image.
+  const prompt = `You are an expert bead counter. Your most important task is to count beads ACCURATELY.
+
+COUNTING INSTRUCTIONS - follow these steps mentally before answering:
+1. Divide the image into a grid of sections (e.g. top-left, top-right, bottom-left, bottom-right).
+2. Count the beads in each section separately.
+3. Add the section counts together for the total.
+4. Do NOT count the same bead twice if it sits on a grid boundary.
+5. Do NOT count shadows, reflections, or blurred partial beads at the very edge of the image.
+6. If beads are on a string, count along the string rather than estimating.
+7. Be conservative - when unsure whether something is a bead, do NOT count it.
+
+Then identify the bead material based on colour, translucency, and surface texture.
 
 Return ONLY a raw JSON object. No markdown, no code fences, no explanation, no text outside the JSON.
 Use exactly this structure with no extra fields:
 {"count":12,"identifications":[{"name":"Carnelian","confidence":"High"},{"name":"Garnet","confidence":"Medium"},{"name":"Ruby","confidence":"Low"}]}
 
 Rules:
-- count: integer, number of beads visible in the image
+- count: integer, your careful section-by-section total
 - identifications: 3 to 5 items, ranked most likely first
 - name: bead material or gemstone type, plain ASCII only, no apostrophes
 - confidence: exactly the word High, Medium, or Low
@@ -867,6 +894,16 @@ Rules:
   }
 }
 
+// ─── STEP COUNT ──────────────────────────────────────────────────────────────
+function stepCount(delta) {
+  const input = document.getElementById('countOverride');
+  if (!input) return;
+  const current = parseInt(input.value) || 0;
+  const next = Math.max(0, current + delta);
+  input.value = next;
+  document.getElementById('countDisplay').textContent = next;
+}
+
 // ─── RENDER RESULT ───────────────────────────────────────────────────────────
 function renderResult(data) {
   const section = document.getElementById('resultSection');
@@ -886,10 +923,12 @@ function renderResult(data) {
         <div class="count-number" id="countDisplay">${data.count}</div>
         <div class="count-label">Beads detected</div>
         <div class="count-edit-row">
+          <button class="count-step-btn" onclick="stepCount(-1)">−</button>
           <input type="number" id="countOverride" value="${data.count}" min="0" max="9999"
-            onchange="document.getElementById('countDisplay').textContent=this.value"/>
-          <span class="edit-hint">← Tap to correct</span>
+            oninput="document.getElementById('countDisplay').textContent=this.value"/>
+          <button class="count-step-btn" onclick="stepCount(1)">+</button>
         </div>
+        <div class="edit-hint">Tap − / + to correct the count</div>
       </div>
 
       <div class="id-section-title">Possible Identifications</div>
