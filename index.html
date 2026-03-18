@@ -801,10 +801,10 @@ Respond ONLY with valid JSON, no markdown, no explanation:
 
   try {
     const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent`,
       {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
         body: JSON.stringify({
           contents: [{
             parts: [
@@ -812,7 +812,11 @@ Respond ONLY with valid JSON, no markdown, no explanation:
               { inline_data: { mime_type: 'image/jpeg', data: capturedImageBase64 } }
             ]
           }],
-          generationConfig: { temperature: 0.2, maxOutputTokens: 800 }
+          generationConfig: {
+            temperature: 0.2,
+            maxOutputTokens: 2048,
+            responseMimeType: 'application/json'
+          }
         })
       }
     );
@@ -824,8 +828,16 @@ Respond ONLY with valid JSON, no markdown, no explanation:
 
     const data = await res.json();
     const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-    const clean = rawText.replace(/```json|```/g, '').trim();
-    analysisResult = JSON.parse(clean);
+    if (!rawText) throw new Error('Empty response from Gemini. Please try again.');
+
+    // Robustly extract JSON - strip markdown fences, find outermost { } block
+    let jsonStr = rawText.replace(/```json\s*|```\s*/g, '').trim();
+    const firstBrace = jsonStr.indexOf('{');
+    const lastBrace = jsonStr.lastIndexOf('}');
+    if (firstBrace !== -1 && lastBrace !== -1) {
+      jsonStr = jsonStr.slice(firstBrace, lastBrace + 1);
+    }
+    analysisResult = JSON.parse(jsonStr);
 
     document.getElementById('analyzingState').style.display = 'none';
     renderResult(analysisResult);
